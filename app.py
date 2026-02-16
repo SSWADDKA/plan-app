@@ -2,177 +2,141 @@ import streamlit as st
 import google.generativeai as genai
 from docxtpl import DocxTemplate
 import io
+import json
 
-# --- 1. การตั้งค่าหน้าจอและสไตล์ (ฉบับ Minimal White & Layer) ---
-st.set_page_config(layout="wide", page_title="PLAN - ผู้ช่วยออกแบบการสอน")
+# --- 1. การตั้งค่าหน้าจอและสไตล์ ---
+st.set_page_config(layout="wide", page_title="PLAN - ระบบช่วยเขียนแผนการสอน")
 
 st.markdown("""
     <style>
-    /* 1. พื้นหลังหลัก (Layer 0) */
-    .stApp {
-        background-color: #fcfcfc;
-    }
-
-    /* 2. Sidebar สีขาวสะอาด */
-    [data-testid="stSidebar"] {
+    .stApp { background-color: #fcfcfc; }
+    [data-testid="stSidebar"] { width: 450px !important; background-color: #ffffff; border-right: 1px solid #eee; }
+    
+    /* สไตล์กระดาษแผนการสอน (Layer 1) */
+    .paper-container {
         background-color: #ffffff;
-        border-right: 1px solid #eeeeee;
+        padding: 45px 60px;
+        border: 1px solid #e0e0e0;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+        border-radius: 4px;
+        color: #000000;
+        margin-top: 20px;
     }
 
-    /* 3. ตกแต่ง Input และ Textarea ให้มีขอบนวล */
-    .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] {
-        border-radius: 8px !important;
-        border: 1px solid #e0e0e0 !important;
-        background-color: #ffffff !important;
-        color: #000000 !important;
-    }
-
-    /* 4. ปุ่มกดสีดำ (คมเข้ม มีมิติ) */
     div.stButton > button {
         width: 100%;
         border-radius: 8px;
-        height: 3.2em;
+        height: 3.5em;
         background-color: #000000;
         color: #ffffff;
-        font-weight: 500;
+        font-weight: bold;
         border: none;
-        transition: all 0.3s ease;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
-    div.stButton > button:hover {
-        background-color: #333333;
-        box-shadow: 0 6px 12px rgba(0,0,0,0.15);
-        transform: translateY(-2px);
-    }
 
-    /* 5. ส่วน Preview ให้ดูเหมือนกระดาษลอยขึ้นมา (Layer 1) */
     .stTextArea textarea {
-        background-color: #ffffff !important;
-        color: #000000 !important;
-        border: 1px solid #e0e0e0 !important;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.06) !important;
-        padding: 25px !important;
-        line-height: 1.8 !important;
-        font-family: 'Sarabun', sans-serif;
-    }
-
-    /* 6. ปุ่ม Download สไตล์ Outline */
-    .stDownloadButton > button {
-        background-color: #ffffff !important;
-        color: #000000 !important;
-        border: 1px solid #000000 !important;
-        border-radius: 8px !important;
-        font-weight: bold;
-        transition: all 0.3s;
-    }
-    .stDownloadButton > button:hover {
-        background-color: #000000 !important;
-        color: #ffffff !important;
-    }
-
-    /* ปรับแต่งหัวข้อ */
-    h1, h2, h3, h4, h5, p, span {
-        color: #000000 !important;
+        border: 1px solid #eee !important;
+        background-color: #fdfdfd !important;
+        font-size: 16px !important;
+        line-height: 1.7 !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. การเชื่อมต่อ API (ดึงจาก Secrets) ---
-try:
-    GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
-    genai.configure(api_key=GOOGLE_API_KEY)
-    # ใช้รุ่น Gemini 2.5 Flash ตามโควตาที่คุณได้รับ
-    model = genai.GenerativeModel('gemini-2.5-flash')
-except Exception as e:
-    st.error("กรุณาตั้งค่า GOOGLE_API_KEY ใน Streamlit Secrets ก่อนใช้งาน")
+# --- 2. การเชื่อมต่อ API ---
+GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
+genai.configure(api_key=GOOGLE_API_KEY)
+model = genai.GenerativeModel('gemini-2.5-flash')
 
-# --- 3. ส่วน SIDEBAR (ข้อมูลการสอน) ---
+# --- 3. SIDEBAR (ส่วนกรอกข้อมูลตามแบบฟอร์มจริง) ---
 with st.sidebar:
-    st.markdown("### 📝 สร้างแผนการสอน")
-    st.caption("AI จะช่วยร่างแผนการสอนที่เหมาะสมกับบริบทของคุณ")
-    
+    st.markdown("### 📝 ข้อมูลแผนการจัดการเรียนรู้")
     with st.form("input_form"):
+        school_name = st.text_input("โรงเรียน", placeholder="ระบุชื่อโรงเรียน")
+        teacher_name = st.text_input("ชื่อครูผู้สอน")
+        
         col1, col2 = st.columns(2)
         with col1:
-            subject = st.text_input("วิชา", placeholder="เช่น วิทยาการคำนวณ")
-            teacher_name = st.text_input("ชื่อครูผู้สอน")
+            subject = st.text_input("วิชา", placeholder="เช่น หุ่นยนต์")
+            grade = st.text_input("ชั้น ม.", placeholder="5")
         with col2:
-            grade = st.text_input("ระดับชั้น", placeholder="เช่น ม.5")
-            time = st.selectbox("เวลา", ["60 นาที", "120 นาที", "อื่น ๆ"])
+            topic = st.text_input("เรื่อง", placeholder="เช่น เซนเซอร์ EV3")
+            duration = st.text_input("เวลา (ชั่วโมง)", placeholder="2")
             
-        topic = st.text_input("หัวข้อการเรียนรู้", placeholder="เช่น Lego Mindstorms EV3")
-        context_input = st.text_area("บริบท (นักเรียน/อุปกรณ์)", placeholder="เช่น นักเรียนเน้นปฏิบัติ, อุปกรณ์ครบ")
-        skills = st.text_area("ทักษะที่เน้น (K-P-A)", placeholder="เช่น การคิดแก้ปัญหา, การเขียนโค้ด")
+        context_input = st.text_area("บริบทนักเรียน/ทักษะที่เน้น (K-P-A)", height=100)
         
-        submitted = st.form_submit_button("✨ เริ่มร่างแผนการสอน")
+        submitted = st.form_submit_button("🚀 สร้างแผนการสอน")
 
 # --- 4. ส่วนแสดงผลหลัก (MAIN CONTENT) ---
-if not submitted and 'ai_result' not in st.session_state:
-    st.write("")
-    st.write("")
-    st.columns([1, 2, 1])[1].info("📝 กรอกข้อมูลทางซ้ายมือ และกดปุ่มเพื่อเริ่มร่างแผนการสอน")
-
 if submitted:
-    with st.spinner('กำลังใช้ AI ออกแบบแผนการสอน...'):
+    with st.spinner('AI กำลังร่างแผนตามแบบฟอร์มมาตรฐาน...'):
+        # สั่ง AI ให้ตอบกลับเป็นโครงสร้างที่ชัดเจน
         prompt = f"""
-        จงเขียนแผนการสอนวิชา {subject} เรื่อง {topic} สำหรับนักเรียนชั้น {grade} 
-        โดยใช้เวลาสอน {time} ภายใต้บริบท: {context_input} 
-        เน้นพัฒนาทักษะ: {skills}
+        เขียนแผนการจัดการเรียนรู้ภาษาไทยสำหรับ วิชา: {subject} เรื่อง: {topic} ชั้น: {grade}
+        บริบทเพิ่มเติม: {context_input}
         
-        โครงสร้างแผนที่ต้องการ:
-        1. สาระสำคัญและแนวคิดหลัก
-        2. จุดประสงค์การเรียนรู้ (K-P-A)
-        3. กิจกรรมการเรียนรู้ (ลำดับขั้นตอนชัดเจน)
-        4. สื่อการสอนและแหล่งเรียนรู้
-        5. การวัดและประเมินผล
+        จงเขียนเนื้อหาแยกตามหัวข้อดังนี้ (ห้ามเขียนรวมกัน):
+        [STANDARDS]: มาตรฐานการเรียนรู้และตัวชี้วัดที่เกี่ยวข้อง
+        [CONCEPT]: สาระสำคัญของบทเรียนนี้
+        [OBJECTIVES]: จุดประสงค์การเรียนรู้ (แยกด้าน K, P, A)
+        [ACTIVITIES]: ขั้นตอนการสอน (ขั้นนำ, สอน, สรุป)
+        [RESOURCES]: สื่อและแหล่งเรียนรู้
+        [EVALUATION]: วิธีการวัดและประเมินผล
         """
-        try:
-            response = model.generate_content(prompt)
-            # เก็บค่าลง SessionState เพื่อให้แก้ไขได้โดยข้อมูลไม่หาย
-            st.session_state['ai_result'] = response.text
-            st.session_state['teacher_name'] = teacher_name
-            st.session_state['subject'] = subject
-            st.session_state['topic'] = topic
-        except Exception as e:
-            st.error(f"เกิดข้อผิดพลาดในการเรียก AI: {e}")
+        response = model.generate_content(prompt)
+        full_text = response.text
+        
+        # ฟังก์ชันช่วยแยกเนื้อหามาใส่ตัวแปร
+        def get_section(tag, text):
+            try:
+                start = text.find(f"[{tag}]") + len(tag) + 2
+                end = text.find("[", start)
+                return text[start:end].strip() if end != -1 else text[start:].strip()
+            except: return ""
 
-# ส่วนแสดงผล Preview และปุ่ม Export
-if 'ai_result' in st.session_state:
-    st.markdown("---")
-    header_col1, header_col2 = st.columns([7, 3])
+        # เก็บข้อมูลลง Session
+        st.session_state['plan_data'] = {
+            'school_name': school_name,
+            'teacher_name': teacher_name,
+            'subject': subject,
+            'grade': grade,
+            'topic': topic,
+            'duration': duration,
+            'standards': get_section("STANDARDS", full_text),
+            'concept': get_section("CONCEPT", full_text),
+            'objectives': get_section("OBJECTIVES", full_text),
+            'activities': get_section("ACTIVITIES", full_text),
+            'resources': get_section("RESOURCES", full_text),
+            'evaluation': get_section("EVALUATION", full_text),
+            'full_display': full_text # สำหรับโชว์ในหน้าเว็บ
+        }
+
+if 'plan_data' in st.session_state:
+    data = st.session_state['plan_data']
     
-    with header_col1:
-        st.markdown("#### 📄 มุมมองแผ่นกระดาษ (แก้ไขเนื้อหาได้)")
-    
-    with header_col2:
-        # ระบบ Export Word (ต้องมีไฟล์ template.docx บน GitHub)
+    # ปุ่มดาวน์โหลด
+    col_title, col_btn = st.columns([7, 3])
+    with col_btn:
         try:
             doc = DocxTemplate("template.docx")
-            context_data = {
-                'teacher_name': st.session_state['teacher_name'],
-                'subject': st.session_state['subject'],
-                'topic': st.session_state['topic'],
-                'ai_content': st.session_state['ai_result']
-            }
-            doc.render(context_data)
-            
-            buffer = io.BytesIO()
-            doc.save(buffer)
-            
-            st.download_button(
-                label="📥 ดาวน์โหลดไฟล์ Word (.docx)",
-                data=buffer.getvalue(),
-                file_name=f"Plan_{st.session_state['topic']}.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            )
+            doc.render(data)
+            bio = io.BytesIO()
+            doc.save(bio)
+            st.download_button("📥 ดาวน์โหลดไฟล์ Word (.docx)", bio.getvalue(), f"แผนการสอน_{data['topic']}.docx")
         except:
-            st.caption("⚠️ หากต้องการดาวน์โหลด กรุณาอัปโหลดไฟล์ template.docx ขึ้น GitHub")
+            st.warning("⚠️ อย่าลืมใส่รหัส {{...}} ในไฟล์ template.docx และอัปโหลดขึ้น GitHub")
 
-    # ส่วนแก้ไขเนื้อหาที่ AI เจนออกมา (Layer 1)
-    edited_text = st.text_area(
-        label="เนื้อหาแผนการสอน:",
-        value=st.session_state['ai_result'],
-        height=650
-    )
-    # อัปเดตข้อมูลตามที่ผู้ใช้แก้
-    st.session_state['ai_result'] = edited_text
+    # ส่วนแสดงผลบนหน้าเว็บ (Paper View)
+    st.markdown('<div class="paper-container">', unsafe_allow_html=True)
+    st.markdown(f"<h2 style='text-align:center;'>แผนการจัดการเรียนรู้</h2>", unsafe_allow_html=True)
+    st.markdown(f"<p style='text-align:center;'><b>โรงเรียน:</b> {data['school_name']} | <b>วิชา:</b> {data['subject']} | <b>เรื่อง:</b> {data['topic']}</p>", unsafe_allow_html=True)
+    
+    # ส่วนแก้ไขเนื้อหา (คลิกแก้ได้เลย)
+    edited_text = st.text_area("เนื้อหาแผนการสอน (แก้ไขได้ที่นี่):", value=data['full_display'], height=800)
+    
+    # หากมีการแก้ไข ให้พยายามอัปเดตข้อมูลที่จะ Export ด้วย (แบบคร่าวๆ)
+    if edited_text != data['full_display']:
+        st.session_state['plan_data']['full_display'] = edited_text
+        st.session_state['plan_data']['activities'] = edited_text # บันทึกเนื้อหาที่แก้ลงกิจกรรมเป็นหลัก
+        
+    st.markdown('</div>', unsafe_allow_html=True)
