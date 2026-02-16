@@ -4,8 +4,8 @@ from docxtpl import DocxTemplate
 import io
 
 # --- 1. ตั้งค่า API (เอารหัสคุณมาใส่ตรงนี้) ---
-GOOGLE_API_KEY = "AIzaSyBB1_SLo-MDxDmwU3wlJSAre9JYdXAff54"
-genai.configure(api_key=GOOGLE_API_KEY)
+GOOGLE_API_KEY = "..."
+GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
 model = genai.GenerativeModel('gemini-2.5-flash')
 
 # --- 2. หน้าจอแอป ---
